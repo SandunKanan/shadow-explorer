@@ -82,8 +82,7 @@ function buildFlowNodes(rawNodes, rawEdges, selectedId) {
 
   return rawNodes.map((n) => {
     const depth = depthMap.get(n.id) ?? 3;
-    const scale = Math.max(0.7, 1.05 - depth * 0.08);
-    const size = 160 * scale;
+    const size = 160;
     const accent = ACCENTS[depth % ACCENTS.length];
 
     return {
@@ -98,13 +97,10 @@ function buildFlowNodes(rawNodes, rawEdges, selectedId) {
       style: {
         width: size,
         height: size,
+        aspectRatio: "1 / 1",
         padding: 10,
         borderRadius: "50%",
         border: "none",
-        boxShadow:
-          n.id === selectedId
-            ? "0 18px 35px rgba(26, 22, 18, 0.25)"
-            : "0 10px 25px rgba(26, 22, 18, 0.12)",
         "--node-accent": accent,
         "--node-depth": depth
       }
