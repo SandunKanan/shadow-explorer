@@ -1,8 +1,56 @@
 .appShell {
   display: grid;
-  grid-template-columns: 1fr 420px;
+  grid-template-rows: auto 1fr;
   height: 100vh;
   background: #f3efe8;
+}
+
+.appHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 18px;
+  border-bottom: 1px solid #d2c6b7;
+  background: linear-gradient(120deg, #f8f7f4 0%, #efe8dc 100%);
+}
+
+.viewToggle {
+  display: inline-flex;
+  gap: 8px;
+}
+
+.viewToggle button,
+.zoomOut {
+  border: 1px solid #8b7b6d;
+  background: #fefcf8;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.viewToggle button.isActive {
+  background: #1f4250;
+  color: #fefcf8;
+  border-color: #1f4250;
+}
+
+.zoomOut {
+  background: #fff2e2;
+  border-color: #c8a88d;
+}
+
+.zoomOut:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.appBody {
+  display: grid;
+  grid-template-columns: 1fr 420px;
+  min-height: 0;
 }
 
 .graphPane {
@@ -39,6 +87,20 @@
   box-shadow: 0 10px 26px rgba(35, 29, 23, 0.2);
 }
 
+.react-flow__node {
+  transition: opacity 220ms ease;
+}
+
+.react-flow__node.node--hidden,
+.react-flow__node.node--fade-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.react-flow__node.node--visible {
+  opacity: 1;
+}
+
 .keyNode {
   color: #f8f6f2;
   width: 100%;
@@ -57,7 +119,7 @@
     serif;
   padding: 18px;
   backdrop-filter: blur(4px);
-  opacity: calc(1 - (var(--node-depth) * 0.06));
+  opacity: 0.96;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -67,7 +129,7 @@
 }
 
 .keyNode__label {
-  font-size: calc(16px - (var(--node-depth) * 0.4px));
+  font-size: 15px;
   font-weight: 500;
   line-height: 1.2;
   max-width: 100%;
@@ -171,6 +233,8 @@
 }
 
 .chip {
+  display: inline-flex;
+  align-items: center;
   padding: 6px 12px;
   border-radius: 999px;
   border: 1px solid #7c6a5d;
@@ -184,8 +248,16 @@
   background: #fff4e6;
 }
 
+.chip--static {
+  cursor: default;
+}
+
+.chip--static:hover {
+  background: rgba(255, 255, 255, 0.9);
+}
+
 @media (max-width: 960px) {
-  .appShell {
+  .appBody {
     grid-template-columns: 1fr;
   }
 

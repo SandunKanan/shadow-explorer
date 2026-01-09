@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -7,116 +7,93 @@ import ReactFlow, {
   Handle
 } from "reactflow";
 
-const ROOT_ID = "type8";
 const ACCENTS = ["#6fa8dc", "#7ec8b6", "#f2a07b", "#d79072", "#9cc39b"];
+const BASE_SIZE = 160;
+const KEYWORD_SIZE = 120;
 
-function computeDepths(rawNodes, rawEdges, rootId) {
-  const nodesById = new Set(rawNodes.map((n) => n.id));
-  const outgoing = new Map();
+function radialLayout(ids, radius, offset = 0) {
+  const positions = new Map();
+  const count = ids.length;
+  const step = (Math.PI * 2) / Math.max(1, count);
 
-  for (const e of rawEdges) {
-    if (!nodesById.has(e.source) || !nodesById.has(e.target)) continue;
-    outgoing.set(e.source, [...(outgoing.get(e.source) || []), e.target]);
-  }
+  ids.forEach((id, index) => {
+    const angle = index * step + offset;
+    positions.set(id, {
+      x: Math.cos(angle) * radius,
+      y: Math.sin(angle) * radius
+    });
+  });
 
-  const fallbackRoot = rawNodes[0]?.id;
-  const start = nodesById.has(rootId) ? rootId : fallbackRoot;
-  const depth = new Map();
-
-  if (!start) return depth;
-  depth.set(start, 0);
-  const queue = [start];
-
-  while (queue.length) {
-    const current = queue.shift();
-    const next = outgoing.get(current) || [];
-    for (const n of next) {
-      if (depth.has(n)) continue;
-      depth.set(n, (depth.get(current) || 0) + 1);
-      queue.push(n);
-    }
-  }
-
-  return depth;
+  return positions;
 }
 
-function buildRadialPositions(rawNodes, depthMap) {
-  const levels = new Map();
-  let maxDepth = 0;
-
-  for (const n of rawNodes) {
-    const d = depthMap.get(n.id) ?? 3;
-    maxDepth = Math.max(maxDepth, d);
-    levels.set(d, [...(levels.get(d) || []), n.id]);
+function buildPositions(nodes, focusId) {
+  if (nodes.length === 0) return new Map();
+  if (!focusId) {
+    const radius = Math.max(260, (nodes.length * 170) / (Math.PI * 2));
+    return radialLayout(
+      nodes.map((n) => n.id),
+      radius,
+      0.25
+    );
   }
 
   const positions = new Map();
-  const baseRadius = 170;
-  const ringGap = 210;
-  for (const [depth, ids] of [...levels.entries()].sort((a, b) => a[0] - b[0])) {
-    const sorted = [...ids].sort();
-    if (depth === 0) {
-      positions.set(sorted[0], { x: 0, y: 0 });
-      continue;
-    }
+  positions.set(focusId, { x: 0, y: 0 });
+  const satellites = nodes.filter((n) => n.id !== focusId);
+  if (satellites.length === 0) return positions;
 
-    const count = sorted.length;
-    const circumference = Math.max(count * 200, 1);
-    const radius = Math.max(baseRadius + (depth - 1) * ringGap, circumference / (Math.PI * 2));
-    const step = (Math.PI * 2) / Math.max(1, count);
-    sorted.forEach((id, index) => {
-      const angle = index * step + depth * 0.35;
-      positions.set(id, {
-        x: Math.cos(angle) * radius,
-        y: Math.sin(angle) * radius
-      });
-    });
+  const radius = Math.max(220, (satellites.length * 150) / (Math.PI * 2));
+  const ring = radialLayout(
+    satellites.map((n) => n.id),
+    radius,
+    0.4
+  );
+  for (const [id, pos] of ring.entries()) {
+    positions.set(id, pos);
   }
 
   return positions;
 }
 
-function buildFlowNodes(rawNodes, rawEdges, selectedId) {
-  const depthMap = computeDepths(rawNodes, rawEdges, ROOT_ID);
-  const positions = buildRadialPositions(rawNodes, depthMap);
-
-  return rawNodes.map((n) => {
-    const depth = depthMap.get(n.id) ?? 3;
-    const size = 160;
-    const accent = ACCENTS[depth % ACCENTS.length];
+function buildFlowNodes(nodes, positions, focusId, fadeIn) {
+  return nodes.map((n, index) => {
+    const size = n.isKeyword ? KEYWORD_SIZE : BASE_SIZE;
+    const accent = n.accent || ACCENTS[index % ACCENTS.length];
+    const isFocused = n.id === focusId;
+    const shouldFade = Boolean(focusId) && !isFocused;
+    const isHidden = shouldFade && !fadeIn;
+    const className = isHidden ? "node--hidden" : "node--visible";
 
     return {
       id: n.id,
       type: "keyNode",
+      className,
       position: positions.get(n.id) || { x: 0, y: 0 },
       data: {
         label: n.label,
         kind: n.kind,
-        depth
+        selectable: n.selectable
       },
       style: {
         width: size,
         height: size,
-        aspectRatio: "1 / 1",
         padding: 10,
         borderRadius: "50%",
         border: "none",
-        "--node-accent": accent,
-        "--node-depth": depth
+        "--node-accent": accent
       }
     };
   });
 }
 
-function buildFlowEdges(rawEdges) {
-  return rawEdges.map((e) => ({
+function buildFlowEdges(edges) {
+  return edges.map((e) => ({
     id: e.id,
     source: e.source,
     target: e.target,
-    label: e.label,
     animated: true,
-    style: { stroke: "rgba(66, 90, 112, 0.6)", strokeWidth: 1.1 },
-    labelStyle: { fill: "rgba(66, 90, 112, 0.9)", fontSize: 10 }
+    style: { stroke: "rgba(66, 90, 112, 0.6)", strokeWidth: 1.1 }
   }));
 }
 
@@ -131,28 +108,57 @@ function KeyNode({ data, selected }) {
   );
 }
 
-export default function GraphView({ rawNodes, rawEdges, selectedId, onSelect }) {
+export default function GraphView({ nodes, edges, selectedId, onSelect }) {
   const flowRef = useRef(null);
-  const flowNodes = useMemo(
-    () => buildFlowNodes(rawNodes, rawEdges, selectedId),
-    [rawNodes, rawEdges, selectedId]
+  const [fadeIn, setFadeIn] = useState(true);
+  const positions = useMemo(
+    () => buildPositions(nodes, selectedId),
+    [nodes, selectedId]
   );
-  const flowEdges = useMemo(() => buildFlowEdges(rawEdges), [rawEdges]);
+  const flowNodes = useMemo(
+    () => buildFlowNodes(nodes, positions, selectedId, fadeIn),
+    [nodes, positions, selectedId, fadeIn]
+  );
+  const flowEdges = useMemo(() => buildFlowEdges(edges), [edges]);
+  const selectableById = useMemo(() => {
+    const map = new Map();
+    flowNodes.forEach((node) => {
+      map.set(node.id, node.data?.selectable !== false);
+    });
+    return map;
+  }, [flowNodes]);
 
-  const onNodeClick = useCallback((_, node) => onSelect(node.id), [onSelect]);
-
-  // Optional: click an edge to jump to its target
-  const onEdgeClick = useCallback(
-    (_, edge) => onSelect(edge.target),
+  const onNodeClick = useCallback(
+    (_, node) => {
+      if (node.data?.selectable === false) return;
+      onSelect(node.id);
+    },
     [onSelect]
   );
 
+  const onEdgeClick = useCallback(
+    (_, edge) => {
+      if (!selectableById.get(edge.target)) return;
+      onSelect(edge.target);
+    },
+    [onSelect, selectableById]
+  );
+
   useEffect(() => {
-    const focus = flowNodes.find((n) => n.id === selectedId);
-    if (!focus) return;
-    const depth = focus.data?.depth ?? 0;
-    const padding = Math.max(0.32, 0.72 - depth * 0.08);
-    flowRef.current?.fitView({ nodes: [focus], padding, duration: 650 });
+    if (!selectedId) {
+      setFadeIn(true);
+      return;
+    }
+
+    setFadeIn(false);
+    const timer = setTimeout(() => setFadeIn(true), 180);
+    return () => clearTimeout(timer);
+  }, [selectedId]);
+
+  useEffect(() => {
+    if (!flowRef.current || flowNodes.length === 0) return;
+    const padding = selectedId ? 0.55 : 0.8;
+    flowRef.current.fitView({ nodes: flowNodes, padding, duration: 650 });
   }, [selectedId, flowNodes]);
 
   return (
